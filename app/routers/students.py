@@ -1,12 +1,17 @@
 """
-CRUD routes for students.
+CRUD routes for students using custom application exceptions.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.exceptions import (
+    BadRequestException,
+    DuplicateException,
+    NotFoundException,
+)
 from app.models.student import Student
 from app.schemas.student import (
     StudentCreate,
@@ -30,18 +35,13 @@ def get_student_or_404(
     student_id: int,
     db: Session,
 ) -> Student:
-    """
-    Return a student by ID.
-
-    Raises 404 if the student does not exist.
-    """
+    """Return a student or raise NotFoundException."""
 
     student = db.get(Student, student_id)
 
     if student is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Student not found",
+        raise NotFoundException(
+            f"Student with ID {student_id} was not found."
         )
 
     return student
@@ -52,12 +52,7 @@ def email_in_use(
     db: Session,
     exclude_student_id: int | None = None,
 ) -> bool:
-    """
-    Check whether an email address already belongs to a student.
-
-    exclude_student_id is useful during PUT/PATCH so a student
-    can keep their existing email address.
-    """
+    """Return True if the email already belongs to another student."""
 
     statement = select(Student).where(
         Student.email == email
@@ -73,7 +68,6 @@ def email_in_use(
 
 # ============================================================
 # CREATE
-# POST /students
 # ============================================================
 
 @router.post(
@@ -85,12 +79,9 @@ def create_student(
     student: StudentCreate,
     db: Session = Depends(get_db),
 ):
-    """Create and persist a new student."""
-
     if email_in_use(student.email, db):
-        raise HTTPException(
-            status_code=409,
-            detail="A student with this email already exists",
+        raise DuplicateException(
+            "A student with this email already exists."
         )
 
     new_student = Student(
@@ -109,8 +100,7 @@ def create_student(
 
 
 # ============================================================
-# READ COLLECTION
-# GET /students
+# READ ALL
 # ============================================================
 
 @router.get(
@@ -128,11 +118,6 @@ def list_students(
     ),
     db: Session = Depends(get_db),
 ):
-    """
-    List students with optional grade-level
-    and enrollment-status filters.
-    """
-
     statement = select(Student)
 
     if grade_level is not None:
@@ -152,7 +137,6 @@ def list_students(
 
 # ============================================================
 # READ ONE
-# GET /students/{student_id}
 # ============================================================
 
 @router.get(
@@ -163,8 +147,6 @@ def get_student(
     student_id: int,
     db: Session = Depends(get_db),
 ):
-    """Return one student by ID."""
-
     return get_student_or_404(
         student_id,
         db,
@@ -172,8 +154,7 @@ def get_student(
 
 
 # ============================================================
-# FULL UPDATE
-# PUT /students/{student_id}
+# PUT
 # ============================================================
 
 @router.put(
@@ -185,8 +166,6 @@ def replace_student(
     student_data: StudentUpdate,
     db: Session = Depends(get_db),
 ):
-    """Fully replace a student's editable fields."""
-
     student = get_student_or_404(
         student_id,
         db,
@@ -197,9 +176,8 @@ def replace_student(
         db,
         exclude_student_id=student_id,
     ):
-        raise HTTPException(
-            status_code=409,
-            detail="A student with this email already exists",
+        raise DuplicateException(
+            "A student with this email already exists."
         )
 
     student.name = student_data.name
@@ -215,8 +193,7 @@ def replace_student(
 
 
 # ============================================================
-# PARTIAL UPDATE
-# PATCH /students/{student_id}
+# PATCH
 # ============================================================
 
 @router.patch(
@@ -228,8 +205,6 @@ def patch_student(
     student_data: StudentPatch,
     db: Session = Depends(get_db),
 ):
-    """Update only the fields supplied by the client."""
-
     student = get_student_or_404(
         student_id,
         db,
@@ -245,9 +220,8 @@ def patch_student(
             db,
             exclude_student_id=student_id,
         ):
-            raise HTTPException(
-                status_code=409,
-                detail="A student with this email already exists",
+            raise DuplicateException(
+                "A student with this email already exists."
             )
 
     for field, value in updates.items():
@@ -265,7 +239,6 @@ def patch_student(
 
 # ============================================================
 # DELETE
-# DELETE /students/{student_id}
 # ============================================================
 
 @router.delete(
@@ -276,12 +249,18 @@ def delete_student(
     student_id: int,
     db: Session = Depends(get_db),
 ):
-    """Delete a student."""
-
     student = get_student_or_404(
         student_id,
         db,
     )
+
+    # Business rule:
+    # Active/enrolled students cannot be deleted.
+    if student.is_enrolled:
+        raise BadRequestException(
+            "An enrolled student cannot be deleted. "
+            "Mark the student as not enrolled first."
+        )
 
     db.delete(student)
     db.commit()
