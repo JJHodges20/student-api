@@ -2,15 +2,15 @@
 
 A database-backed REST API built with **FastAPI**, **SQLAlchemy**, and **SQLite** for managing student records.
 
-This version expands the Student CRUD API by adding **JWT authentication**, user registration, login, password hashing, protected endpoints, and structured error handling.
+This project demonstrates a complete CRUD application with JWT authentication, structured error handling, and background task processing.
 
 ## Features
 
-### Student CRUD
+### Student Management
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
-| POST | `/students/` | Protected | Create a student |
+| POST | `/students/` | Protected | Create a new student |
 | GET | `/students/` | Public | List and filter students |
 | GET | `/students/{student_id}` | Public | Get a specific student |
 | PUT | `/students/{student_id}` | Protected | Fully replace a student |
@@ -27,23 +27,53 @@ Students can also be filtered by grade level and enrollment status.
 | POST | `/auth/login` | Log in and receive a JWT access token |
 | GET | `/users/me` | View the authenticated user's profile |
 
+Protected endpoints require a valid JWT Bearer token.
+
+## Background Tasks
+
+FastAPI background tasks are used for work that does not need to finish before the API sends its response.
+
+When a student is created:
+
+- The activity is written to `activity_log.txt`.
+- A simulated notification is sent after a 2-second delay.
+- The notification is written to `notification_log.txt`.
+- The API response is returned without waiting for the notification to finish.
+
+When a student is deleted:
+
+- The deletion is recorded in `activity_log.txt` in the background.
+
+Example activity log:
+
+```text
+[2026-09-01T10:42:15] User 1: Created student 4 (Diana Prince)
+[2026-09-01T10:45:32] User 1: Deleted student 4 (Diana Prince)
+```
+
+Example notification log:
+
+```text
+[2026-09-01T10:42:17] To: diana@example.com | Message: Student record created successfully for Diana Prince.
+```
+
 ## Security
 
-Passwords are hashed with **Passlib and bcrypt** before being stored in the database. Plain-text passwords are never saved.
+Passwords are hashed using **Passlib and bcrypt** before being stored in the database.
 
-After a successful login, the API generates a **JWT access token**. Protected endpoints require a valid Bearer token before the request is allowed.
+After a successful login, the API generates a **JWT access token** using `python-jose`. Protected routes use the token to identify the authenticated user.
 
-Swagger UI can be used to authenticate and test protected endpoints.
+FastAPI's OAuth2 password flow is also integrated with Swagger UI, allowing protected endpoints to be tested using the **Authorize** button.
 
 ## Structured Error Handling
 
-The API uses custom exceptions and global exception handlers for consistent error responses:
+Custom exceptions and global exception handlers provide consistent API error responses:
 
 - `NotFoundException` — `404 Not Found`
 - `DuplicateException` — `409 Conflict`
 - `BadRequestException` — `400 Bad Request`
 
-The API also prevents enrolled students from being deleted until their enrollment status is changed.
+The API also includes business logic preventing an enrolled student from being deleted. The student must first be updated to `is_enrolled: false`.
 
 ## Project Structure
 
@@ -69,7 +99,10 @@ student-api/
 │   │   └── users.py
 │   └── utils/
 │       ├── __init__.py
-│       └── security.py
+│       ├── security.py
+│       └── notifications.py
+├── activity_log.txt
+├── notification_log.txt
 ├── requirements.txt
 ├── .gitignore
 └── README.md
@@ -86,10 +119,11 @@ student-api/
 - python-jose
 - Passlib
 - bcrypt
+- python-multipart
 
 ## Running the API
 
-Install the required dependencies:
+Install the dependencies:
 
 ```powershell
 pip install -r requirements.txt
@@ -107,28 +141,39 @@ Open the Swagger documentation at:
 http://127.0.0.1:8000/docs
 ```
 
-## Authentication Flow
+## Testing Authentication
 
-The basic authentication process is:
+1. Register a user with `/auth/register`.
+2. Click **Authorize** in Swagger.
+3. Enter the registered username and password.
+4. Swagger logs in through `/auth/login` and receives a JWT.
+5. Test a protected student endpoint.
+6. Log out and retry the endpoint to confirm unauthorized requests are rejected.
+
+## Background Task Flow
 
 ```text
-Register
-   ↓
-Password is hashed and user is stored
-   ↓
-Login
-   ↓
-Credentials are verified
-   ↓
-JWT access token is generated
-   ↓
-Token is sent with protected requests
-   ↓
-API verifies the token and identifies the user
-   ↓
-Protected endpoint is accessed
+POST /students
+      ↓
+Student saved to database
+      ↓
+API returns 201 Created
+      ↓
+Background Tasks
+├── Log activity
+└── Wait 2 seconds → Write notification
+
+
+DELETE /students/{id}
+      ↓
+Student deleted
+      ↓
+API returns 204 No Content
+      ↓
+Background Task
+└── Log deletion activity
 ```
 
 ## Purpose
 
-This project demonstrates how authentication can be added to a database-backed FastAPI application. It provides practice with user registration, secure password hashing, JWT access tokens, authentication dependencies, protected routes, persistent storage, structured error handling, and the complete CRUD pattern.
+This project demonstrates how several common backend API concepts work together in FastAPI, including persistent database storage, CRUD operations, validation, structured errors, password hashing, JWT authentication, protected routes, and post-response background processing.
