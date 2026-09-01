@@ -2,7 +2,10 @@
 Authentication routes.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
+from fastapi.security import OAuth2PasswordRequestForm
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -10,7 +13,6 @@ from app.database import get_db
 from app.exceptions import BadRequestException, DuplicateException
 from app.models.user import User
 from app.schemas.auth import (
-    LoginRequest,
     RegisterRequest,
     TokenResponse,
     UserResponse,
@@ -20,7 +22,7 @@ from app.utils.security import (
     hash_password,
     verify_password,
 )
-from fastapi.security import OAuth2PasswordRequestForm
+
 
 router = APIRouter(
     prefix="/auth",
@@ -28,20 +30,32 @@ router = APIRouter(
 )
 
 
+limiter = Limiter(
+    key_func=get_remote_address
+)
+
+
+# ============================================================
+# REGISTER
+# 20 requests per minute
+# ============================================================
+
 @router.post(
     "/register",
     response_model=UserResponse,
     status_code=201,
 )
+@limiter.limit("20/minute")
 def register(
-    request: RegisterRequest,
+    request: Request,
+    register_request: RegisterRequest,
     db: Session = Depends(get_db),
 ):
     """Register a new application user."""
 
     existing_user = db.scalar(
         select(User).where(
-            User.username == request.username
+            User.username == register_request.username
         )
     )
 
@@ -51,9 +65,9 @@ def register(
         )
 
     user = User(
-        username=request.username,
+        username=register_request.username,
         hashed_password=hash_password(
-            request.password
+            register_request.password
         ),
     )
 
@@ -64,15 +78,22 @@ def register(
     return user
 
 
+# ============================================================
+# LOGIN
+# 5 requests per minute
+# ============================================================
+
 @router.post(
     "/login",
     response_model=TokenResponse,
 )
+@limiter.limit("5/minute")
 def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    """Authenticate a user and return a JWT."""
+    """Authenticate a user and return a JWT access token."""
 
     user = db.scalar(
         select(User).where(

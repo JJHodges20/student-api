@@ -16,7 +16,7 @@ class StudentCreate(BaseModel):
     )
 
     email: str = Field(
-        min_length=1,
+        min_length=3,
         max_length=255,
     )
 
@@ -25,17 +25,17 @@ class StudentCreate(BaseModel):
         le=12,
     )
 
-    gpa: float | None = None
+    gpa: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=4.0,
+    )
 
     is_enrolled: bool = True
 
 
 class StudentUpdate(BaseModel):
-    """
-    Schema for a complete PUT replacement.
-
-    All main fields must be supplied.
-    """
+    """Schema for a complete PUT replacement."""
 
     name: str = Field(
         min_length=1,
@@ -43,7 +43,7 @@ class StudentUpdate(BaseModel):
     )
 
     email: str = Field(
-        min_length=1,
+        min_length=3,
         max_length=255,
     )
 
@@ -52,17 +52,17 @@ class StudentUpdate(BaseModel):
         le=12,
     )
 
-    gpa: float | None
+    gpa: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=4.0,
+    )
 
     is_enrolled: bool
 
 
 class StudentPatch(BaseModel):
-    """
-    Schema for a partial PATCH update.
-
-    Every field is optional.
-    """
+    """Schema for partial PATCH updates."""
 
     name: str | None = Field(
         default=None,
@@ -72,7 +72,7 @@ class StudentPatch(BaseModel):
 
     email: str | None = Field(
         default=None,
-        min_length=1,
+        min_length=3,
         max_length=255,
     )
 
@@ -82,7 +82,11 @@ class StudentPatch(BaseModel):
         le=12,
     )
 
-    gpa: float | None = None
+    gpa: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=4.0,
+    )
 
     is_enrolled: bool | None = None
 
@@ -90,12 +94,33 @@ class StudentPatch(BaseModel):
 class StudentResponse(BaseModel):
     """Schema returned by the API."""
 
-    id: int
-    name: str
-    email: str
-    grade_level: int
-    gpa: float | None
+    id: int = Field(
+        gt=0,
+    )
+
+    name: str = Field(
+        min_length=1,
+        max_length=100,
+    )
+
+    email: str = Field(
+        min_length=3,
+        max_length=255,
+    )
+
+    grade_level: int = Field(
+        ge=1,
+        le=12,
+    )
+
+    gpa: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=4.0,
+    )
+
     is_enrolled: bool
+
     created_at: datetime
 
     model_config = ConfigDict(

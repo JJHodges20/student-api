@@ -1,8 +1,23 @@
 """
-CRUD routes for students using custom application exceptions.
+CRUD routes for students.
+
+Security:
+- GET endpoints are public and rate-limited to 60/minute.
+- POST is protected and rate-limited to 20/minute.
+- PUT, PATCH, and DELETE require authentication.
+- Background tasks log create/delete activity.
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Query,
+    Request,
+    Response,
+)
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,35 +28,39 @@ from app.exceptions import (
     NotFoundException,
 )
 from app.models.student import Student
+from app.models.user import User
 from app.schemas.student import (
     StudentCreate,
     StudentPatch,
     StudentResponse,
     StudentUpdate,
 )
-
-from app.models.user import User
+from app.utils.notifications import (
+    log_activity,
+    send_notification,
+)
 from app.utils.security import get_current_user
+
 
 router = APIRouter(
     prefix="/students",
     tags=["Students"],
 )
 
-from app.utils.notifications import (
-    log_activity,
-    send_notification,
+limiter = Limiter(
+    key_func=get_remote_address
 )
 
+
 # ============================================================
-# Helper functions
+# Helpers
 # ============================================================
 
 def get_student_or_404(
     student_id: int,
     db: Session,
 ) -> Student:
-    """Return a student or raise NotFoundException."""
+    """Return a student or raise a custom 404 exception."""
 
     student = db.get(Student, student_id)
 
@@ -58,7 +77,7 @@ def email_in_use(
     db: Session,
     exclude_student_id: int | None = None,
 ) -> bool:
-    """Return True if the email already belongs to another student."""
+    """Return True if another student already uses this email."""
 
     statement = select(Student).where(
         Student.email == email
@@ -81,13 +100,15 @@ def email_in_use(
     response_model=StudentResponse,
     status_code=201,
 )
+@limiter.limit("20/minute")
 def create_student(
+    request: Request,
     student: StudentCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a new student and schedule background tasks."""
+    """Create a new student."""
 
     if email_in_use(student.email, db):
         raise DuplicateException(
@@ -106,41 +127,17 @@ def create_student(
     db.commit()
     db.refresh(new_student)
 
-    # Runs after the API response is returned.
     background_tasks.add_task(
         log_activity,
         current_user.id,
-        f"Created student {new_student.id} "
-        f"({new_student.name})",
+        f"Created student {new_student.id} ({new_student.name})",
     )
 
-    # Simulates a slower email/notification operation.
     background_tasks.add_task(
         send_notification,
         new_student.email,
-        (
-            f"Student record created successfully "
-            f"for {new_student.name}."
-        ),
+        f"Student record created successfully for {new_student.name}.",
     )
-
-    return new_student
-    if email_in_use(student.email, db):
-        raise DuplicateException(
-            "A student with this email already exists."
-        )
-
-    new_student = Student(
-        name=student.name,
-        email=student.email,
-        grade_level=student.grade_level,
-        gpa=student.gpa,
-        is_enrolled=student.is_enrolled,
-    )
-
-    db.add(new_student)
-    db.commit()
-    db.refresh(new_student)
 
     return new_student
 
@@ -153,7 +150,9 @@ def create_student(
     "/",
     response_model=list[StudentResponse],
 )
+@limiter.limit("60/minute")
 def list_students(
+    request: Request,
     grade_level: int | None = Query(
         default=None,
         ge=1,
@@ -164,6 +163,8 @@ def list_students(
     ),
     db: Session = Depends(get_db),
 ):
+    """List students with optional filters."""
+
     statement = select(Student)
 
     if grade_level is not None:
@@ -189,10 +190,14 @@ def list_students(
     "/{student_id}",
     response_model=StudentResponse,
 )
+@limiter.limit("60/minute")
 def get_student(
+    request: Request,
     student_id: int,
     db: Session = Depends(get_db),
 ):
+    """Get a single student."""
+
     return get_student_or_404(
         student_id,
         db,
@@ -213,6 +218,8 @@ def replace_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Fully replace a student's editable fields."""
+
     student = get_student_or_404(
         student_id,
         db,
@@ -253,6 +260,8 @@ def patch_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Partially update a student."""
+
     student = get_student_or_404(
         student_id,
         db,
@@ -299,7 +308,7 @@ def delete_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a student and log the action in the background."""
+    """Delete a student if they are not currently enrolled."""
 
     student = get_student_or_404(
         student_id,
@@ -312,7 +321,6 @@ def delete_student(
             "Mark the student as not enrolled first."
         )
 
-    # Save information before deleting the ORM object.
     student_name = student.name
 
     db.delete(student)
@@ -323,18 +331,5 @@ def delete_student(
         current_user.id,
         f"Deleted student {student_id} ({student_name})",
     )
-
-    return Response(status_code=204)
-
-    # Business rule:
-    # Active/enrolled students cannot be deleted.
-    if student.is_enrolled:
-        raise BadRequestException(
-            "An enrolled student cannot be deleted. "
-            "Mark the student as not enrolled first."
-        )
-
-    db.delete(student)
-    db.commit()
 
     return Response(status_code=204)

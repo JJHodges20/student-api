@@ -1,9 +1,28 @@
 """
-Main application for the secured Student CRUD API.
+Secure Student CRUD API
+
+Security measures:
+- JWT Bearer authentication protects modifying student endpoints.
+- Passwords are hashed with Passlib and bcrypt.
+- OAuth2 password authentication is used for login.
+- CORS restricts browser access to approved frontend origins.
+- HTTP methods exposed through CORS are restricted.
+- SlowAPI rate limiting protects endpoints from excessive requests.
+- Login requests are limited to 5 per minute.
+- Create requests are limited to 20 per minute.
+- General read requests are limited to 60 per minute.
+- Pydantic schemas enforce input length and numeric constraints.
+- Custom exceptions provide controlled API error responses.
+- Business rules prevent deletion of currently enrolled students.
 """
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app.database import Base, engine
 from app.exceptions import (
@@ -19,13 +38,50 @@ from app.routers import auth, students, users
 Base.metadata.create_all(bind=engine)
 
 
+# Rate limiter
+limiter = Limiter(
+    key_func=get_remote_address
+)
+
+
 app = FastAPI(
     title="Secure Student CRUD API",
     description=(
-        "A database-backed CRUD API "
-        "with JWT authentication."
+        "A database-backed CRUD API with JWT authentication, "
+        "background tasks, CORS protection, and rate limiting."
     ),
-    version="3.0.0",
+    version="4.0.0",
+)
+
+
+# Make the limiter available throughout the application.
+app.state.limiter = limiter
+
+app.add_exception_handler(
+    RateLimitExceeded,
+    _rate_limit_exceeded_handler,
+)
+
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8501",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+    ],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+    ],
 )
 
 
@@ -77,7 +133,8 @@ app.include_router(students.router)
 
 
 @app.get("/", tags=["Root"])
-def root():
+@limiter.limit("60/minute")
+def root(request: Request):
     return {
         "message": "Welcome to the Secure Student CRUD API"
     }
