@@ -20,7 +20,7 @@ from app.utils.security import (
     hash_password,
     verify_password,
 )
-
+from fastapi.security import OAuth2PasswordRequestForm
 
 router = APIRouter(
     prefix="/auth",
@@ -69,14 +69,14 @@ def register(
     response_model=TokenResponse,
 )
 def login(
-    request: LoginRequest,
+    form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
     """Authenticate a user and return a JWT."""
 
     user = db.scalar(
         select(User).where(
-            User.username == request.username
+            User.username == form_data.username
         )
     )
 
@@ -86,7 +86,7 @@ def login(
         )
 
     if not verify_password(
-        request.password,
+        form_data.password,
         user.hashed_password,
     ):
         raise BadRequestException(

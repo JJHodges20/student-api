@@ -2,7 +2,7 @@
 CRUD routes for students using custom application exceptions.
 """
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,10 @@ router = APIRouter(
     tags=["Students"],
 )
 
+from app.utils.notifications import (
+    log_activity,
+    send_notification,
+)
 
 # ============================================================
 # Helper functions
@@ -79,9 +83,48 @@ def email_in_use(
 )
 def create_student(
     student: StudentCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Create a new student and schedule background tasks."""
+
+    if email_in_use(student.email, db):
+        raise DuplicateException(
+            "A student with this email already exists."
+        )
+
+    new_student = Student(
+        name=student.name,
+        email=student.email,
+        grade_level=student.grade_level,
+        gpa=student.gpa,
+        is_enrolled=student.is_enrolled,
+    )
+
+    db.add(new_student)
+    db.commit()
+    db.refresh(new_student)
+
+    # Runs after the API response is returned.
+    background_tasks.add_task(
+        log_activity,
+        current_user.id,
+        f"Created student {new_student.id} "
+        f"({new_student.name})",
+    )
+
+    # Simulates a slower email/notification operation.
+    background_tasks.add_task(
+        send_notification,
+        new_student.email,
+        (
+            f"Student record created successfully "
+            f"for {new_student.name}."
+        ),
+    )
+
+    return new_student
     if email_in_use(student.email, db):
         raise DuplicateException(
             "A student with this email already exists."
@@ -252,13 +295,36 @@ def patch_student(
 )
 def delete_student(
     student_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Delete a student and log the action in the background."""
+
     student = get_student_or_404(
         student_id,
         db,
     )
+
+    if student.is_enrolled:
+        raise BadRequestException(
+            "An enrolled student cannot be deleted. "
+            "Mark the student as not enrolled first."
+        )
+
+    # Save information before deleting the ORM object.
+    student_name = student.name
+
+    db.delete(student)
+    db.commit()
+
+    background_tasks.add_task(
+        log_activity,
+        current_user.id,
+        f"Deleted student {student_id} ({student_name})",
+    )
+
+    return Response(status_code=204)
 
     # Business rule:
     # Active/enrolled students cannot be deleted.
