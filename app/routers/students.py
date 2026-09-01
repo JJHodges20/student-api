@@ -20,6 +20,8 @@ from app.schemas.student import (
     StudentUpdate,
 )
 
+from app.models.user import User
+from app.utils.security import get_current_user
 
 router = APIRouter(
     prefix="/students",
@@ -78,6 +80,7 @@ def email_in_use(
 def create_student(
     student: StudentCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if email_in_use(student.email, db):
         raise DuplicateException(
@@ -165,6 +168,7 @@ def replace_student(
     student_id: int,
     student_data: StudentUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     student = get_student_or_404(
         student_id,
@@ -204,6 +208,7 @@ def patch_student(
     student_id: int,
     student_data: StudentPatch,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     student = get_student_or_404(
         student_id,
@@ -248,6 +253,7 @@ def patch_student(
 def delete_student(
     student_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     student = get_student_or_404(
         student_id,

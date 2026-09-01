@@ -1,5 +1,5 @@
 """
-Main application for the Student CRUD API.
+Main application for the secured Student CRUD API.
 """
 
 from fastapi import FastAPI, Request
@@ -12,22 +12,22 @@ from app.exceptions import (
     NotFoundException,
 )
 from app.models.student import Student
-from app.routers import students
+from app.models.user import User
+from app.routers import auth, students, users
 
 
 Base.metadata.create_all(bind=engine)
 
 
 app = FastAPI(
-    title="Student CRUD API",
-    description="A CRUD API demonstrating structured error handling.",
-    version="2.0.0",
+    title="Secure Student CRUD API",
+    description=(
+        "A database-backed CRUD API "
+        "with JWT authentication."
+    ),
+    version="3.0.0",
 )
 
-
-# ============================================================
-# Global exception handlers
-# ============================================================
 
 @app.exception_handler(NotFoundException)
 async def not_found_handler(
@@ -71,11 +71,13 @@ async def bad_request_handler(
     )
 
 
+app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(students.router)
 
 
 @app.get("/", tags=["Root"])
 def root():
     return {
-        "message": "Welcome to the Student CRUD API"
+        "message": "Welcome to the Secure Student CRUD API"
     }
