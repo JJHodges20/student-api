@@ -32,6 +32,17 @@ class TokenResponse(BaseModel):
         max_length=20,
     )
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "access_token": (
+                    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                ),
+                "token_type": "bearer",
+            }
+        }
+    )
+
 
 class UserResponse(BaseModel):
     """Public representation of an application user."""
@@ -48,5 +59,12 @@ class UserResponse(BaseModel):
     is_active: bool
 
     model_config = ConfigDict(
-        from_attributes=True
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 1,
+                "username": "studentadmin",
+                "is_active": True,
+            }
+        },
     )

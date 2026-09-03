@@ -53,7 +53,7 @@ limiter = Limiter(
 
 
 # ============================================================
-# Helpers
+# HELPERS
 # ============================================================
 
 def get_student_or_404(
@@ -99,6 +99,18 @@ def email_in_use(
     "/",
     response_model=StudentResponse,
     status_code=201,
+    summary="Create a new student",
+    responses={
+        401: {
+            "description": "Authentication token is missing or invalid."
+        },
+        409: {
+            "description": "A student with this email already exists."
+        },
+        422: {
+            "description": "The submitted student data is invalid."
+        },
+    },
 )
 @limiter.limit("20/minute")
 def create_student(
@@ -108,7 +120,15 @@ def create_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a new student."""
+    """
+    Create a new student record.
+
+    - Requires JWT authentication.
+    - Validates grade level and GPA ranges.
+    - Rejects duplicate email addresses.
+    - Logs the creation as a background task.
+    - Sends a simulated background notification.
+    """
 
     if email_in_use(student.email, db):
         raise DuplicateException(
@@ -149,6 +169,12 @@ def create_student(
 @router.get(
     "/",
     response_model=list[StudentResponse],
+    summary="List student records",
+    responses={
+        422: {
+            "description": "One or more query parameters are invalid."
+        },
+    },
 )
 @limiter.limit("60/minute")
 def list_students(
@@ -163,7 +189,14 @@ def list_students(
     ),
     db: Session = Depends(get_db),
 ):
-    """List students with optional filters."""
+    """
+    Return a list of students.
+
+    - Does not require authentication.
+    - Can filter results by **grade level**.
+    - Can filter results by **enrollment status**.
+    - Returns all students when no filters are supplied.
+    """
 
     statement = select(Student)
 
@@ -189,6 +222,15 @@ def list_students(
 @router.get(
     "/{student_id}",
     response_model=StudentResponse,
+    summary="Get a student by ID",
+    responses={
+        404: {
+            "description": "The requested student was not found."
+        },
+        422: {
+            "description": "The student ID is invalid."
+        },
+    },
 )
 @limiter.limit("60/minute")
 def get_student(
@@ -196,7 +238,13 @@ def get_student(
     student_id: int,
     db: Session = Depends(get_db),
 ):
-    """Get a single student."""
+    """
+    Return one student by ID.
+
+    - Does not require authentication.
+    - Searches for the student using the provided ID.
+    - Returns `404 Not Found` when the student does not exist.
+    """
 
     return get_student_or_404(
         student_id,
@@ -211,6 +259,21 @@ def get_student(
 @router.put(
     "/{student_id}",
     response_model=StudentResponse,
+    summary="Replace a student record",
+    responses={
+        401: {
+            "description": "Authentication token is missing or invalid."
+        },
+        404: {
+            "description": "The requested student was not found."
+        },
+        409: {
+            "description": "The email is already used by another student."
+        },
+        422: {
+            "description": "The submitted student data is invalid."
+        },
+    },
 )
 def replace_student(
     student_id: int,
@@ -218,7 +281,15 @@ def replace_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Fully replace a student's editable fields."""
+    """
+    Fully replace an existing student record.
+
+    - Requires JWT authentication.
+    - Requires all editable student fields.
+    - Validates the replacement data.
+    - Rejects an email already used by another student.
+    - Returns `404 Not Found` when the student does not exist.
+    """
 
     student = get_student_or_404(
         student_id,
@@ -253,6 +324,21 @@ def replace_student(
 @router.patch(
     "/{student_id}",
     response_model=StudentResponse,
+    summary="Partially update a student",
+    responses={
+        401: {
+            "description": "Authentication token is missing or invalid."
+        },
+        404: {
+            "description": "The requested student was not found."
+        },
+        409: {
+            "description": "The email is already used by another student."
+        },
+        422: {
+            "description": "The submitted update data is invalid."
+        },
+    },
 )
 def patch_student(
     student_id: int,
@@ -260,7 +346,15 @@ def patch_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Partially update a student."""
+    """
+    Update selected fields on an existing student.
+
+    - Requires JWT authentication.
+    - Only changes fields included in the request.
+    - Validates any fields that are supplied.
+    - Rejects duplicate student email addresses.
+    - Returns `404 Not Found` when the student does not exist.
+    """
 
     student = get_student_or_404(
         student_id,
@@ -301,6 +395,18 @@ def patch_student(
 @router.delete(
     "/{student_id}",
     status_code=204,
+    summary="Delete a student record",
+    responses={
+        400: {
+            "description": "An enrolled student cannot be deleted."
+        },
+        401: {
+            "description": "Authentication token is missing or invalid."
+        },
+        404: {
+            "description": "The requested student was not found."
+        },
+    },
 )
 def delete_student(
     student_id: int,
@@ -308,7 +414,14 @@ def delete_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a student if they are not currently enrolled."""
+    """
+    Delete an existing student.
+
+    - Requires JWT authentication.
+    - Returns `404 Not Found` when the student does not exist.
+    - Prevents deletion while the student is enrolled.
+    - Logs successful deletion as a background task.
+    """
 
     student = get_student_or_404(
         student_id,

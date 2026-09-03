@@ -2,7 +2,7 @@
 
 A secure, database-backed REST API built with **FastAPI**, **SQLAlchemy**, and **SQLite** for managing student records.
 
-This project demonstrates CRUD operations, persistent storage, JWT authentication, structured error handling, background tasks, CORS protection, rate limiting, input validation, and automated testing with pytest.
+This project demonstrates a complete CRUD application with persistent storage, structured error handling, JWT authentication, background tasks, CORS protection, rate limiting, input validation, automated testing, and polished OpenAPI documentation.
 
 ## Features
 
@@ -17,11 +17,11 @@ This project demonstrates CRUD operations, persistent storage, JWT authenticatio
 | PATCH | `/students/{student_id}` | Protected | — | Partially update a student |
 | DELETE | `/students/{student_id}` | Protected | — | Delete a student |
 
-Students can also be filtered by grade level and enrollment status.
+Students can be filtered by grade level and enrollment status.
 
 ## Authentication
 
-The API uses JWT Bearer authentication to protect endpoints that modify student data.
+The API uses JWT Bearer authentication for protected endpoints.
 
 | Method | Endpoint | Rate Limit | Description |
 |---|---|---|---|
@@ -31,15 +31,59 @@ The API uses JWT Bearer authentication to protect endpoints that modify student 
 
 Passwords are hashed using **Passlib and bcrypt** before being stored.
 
-FastAPI's OAuth2 password flow is integrated with Swagger UI, allowing users to authenticate through the **Authorize** button.
+FastAPI's OAuth2 password flow is integrated with Swagger UI through the **Authorize** button.
+
+## Professional API Documentation
+
+The API includes enhanced OpenAPI documentation with:
+
+- Application title and version
+- Markdown-formatted API description
+- Descriptions for each router tag
+- Endpoint summaries
+- Markdown endpoint docstrings
+- Documented error responses
+- Example response data using `json_schema_extra`
+
+Documentation is available through both FastAPI interfaces:
+
+### Swagger UI
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+Swagger provides an interactive interface for viewing and testing endpoints.
+
+### ReDoc
+
+```text
+http://127.0.0.1:8000/redoc
+```
+
+ReDoc provides a structured API-reference view generated from the same OpenAPI specification.
+
+## Documented Responses
+
+Endpoints include documentation for common HTTP responses such as:
+
+- `200 OK`
+- `201 Created`
+- `204 No Content`
+- `400 Bad Request`
+- `401 Unauthorized`
+- `404 Not Found`
+- `409 Conflict`
+- `422 Unprocessable Entity`
+- `429 Too Many Requests`
 
 ## Security
 
 The API includes several layers of protection:
 
-- JWT authentication for protected endpoints
-- Password hashing with Passlib and bcrypt
-- OAuth2 password authentication
+- JWT Bearer authentication
+- Password hashing
+- OAuth2 authentication flow
 - CORS restrictions
 - SlowAPI rate limiting
 - Pydantic input validation
@@ -48,16 +92,14 @@ The API includes several layers of protection:
 
 ### CORS
 
-Browser access is restricted to:
+Allowed browser origins:
 
 ```text
 http://localhost:8501
 http://localhost:3000
 ```
 
-These origins support local development with **Streamlit** and **React**.
-
-Allowed HTTP methods are restricted to:
+Allowed methods:
 
 ```text
 GET
@@ -69,13 +111,13 @@ DELETE
 
 ### Rate Limiting
 
-SlowAPI provides request limits for important endpoints:
+SlowAPI applies limits including:
 
-- Login requests: **5 per minute**
-- Create requests: **20 per minute**
-- General GET/list requests: **60 per minute**
+- Login: **5 requests per minute**
+- Create endpoints: **20 requests per minute**
+- General GET endpoints: **60 requests per minute**
 
-Requests that exceed a limit receive:
+Requests that exceed the configured limit receive:
 
 ```text
 429 Too Many Requests
@@ -83,75 +125,74 @@ Requests that exceed a limit receive:
 
 ## Input Validation
 
-Pydantic schemas enforce limits on incoming data.
-
-Examples include:
+Pydantic schemas enforce constraints such as:
 
 - Student names: 1–100 characters
-- Student emails: 3–255 characters
+- Emails: 3–255 characters
 - Grade levels: 1–12
 - GPA: 0.0–4.0
 - Usernames: 3–100 characters
 - Passwords: 6–72 characters
 
-Invalid request data is rejected before reaching the database.
+Invalid requests are rejected before reaching the database.
 
 ## Background Tasks
 
-FastAPI background tasks handle work that does not need to finish before an API response is returned.
+FastAPI background tasks are used for non-critical post-response processing.
 
 When a student is created:
 
-- The activity is written to `activity_log.txt`.
-- A simulated notification runs after a 2-second delay.
-- The notification is written to `notification_log.txt`.
+- The activity is logged
+- A simulated notification runs after a delay
+- The API response does not wait for the notification to finish
 
 When a student is deleted:
 
-- The deletion is recorded in `activity_log.txt`.
+- The deletion is logged in the background
+
+Generated files include:
+
+```text
+activity_log.txt
+notification_log.txt
+```
 
 ## Structured Error Handling
 
-Custom exceptions and global exception handlers provide consistent API responses:
+Custom exceptions provide consistent error responses:
 
-- `NotFoundException` — `404 Not Found`
-- `DuplicateException` — `409 Conflict`
-- `BadRequestException` — `400 Bad Request`
-- Rate limit exceeded — `429 Too Many Requests`
+- `NotFoundException` — `404`
+- `DuplicateException` — `409`
+- `BadRequestException` — `400`
 
-The API also prevents currently enrolled students from being deleted. A student must first be updated to `is_enrolled: false`.
+The API also prevents enrolled students from being deleted until their enrollment status is changed.
 
 ## Automated Testing
 
-The project includes an automated test suite built with **pytest** and FastAPI's `TestClient`.
+The project includes a pytest suite using a separate in-memory SQLite database.
 
-Tests use a separate in-memory SQLite database so the development database is never modified during testing.
-
-Reusable pytest fixtures provide:
-
-- A FastAPI test client
-- An isolated test database
-- JWT authorization headers
-- A reusable sample student
-
-The authentication fixture creates a test user directly in the test database and generates a valid JWT, preventing unrelated CRUD tests from consuming the login rate limit.
-
-### Test Coverage
-
-The suite contains **12 passing tests** covering:
+Tests cover:
 
 - Successful student creation
 - Invalid grade validation
 - Invalid GPA validation
-- Listing students with an empty database
-- Listing students with existing data
-- Getting an existing student by ID
-- Handling a nonexistent student
-- Successfully updating a student
-- Updating a nonexistent student
-- Successfully deleting a student
-- Deleting a nonexistent student
-- Rejecting protected requests without authentication
+- Empty and populated student lists
+- Student lookup success and failure
+- Student update success and failure
+- Student deletion success and failure
+- Authentication protection
+
+Current test result:
+
+```text
+12 passed
+```
+
+Run the tests with:
+
+```powershell
+python -m pytest -v
+```
 
 ## Project Structure
 
@@ -185,8 +226,8 @@ student-api/
 │   └── test_students.py
 ├── activity_log.txt
 ├── notification_log.txt
-├── requirements.txt
 ├── students.db
+├── requirements.txt
 ├── .gitignore
 └── README.md
 ```
@@ -221,30 +262,18 @@ Start the development server:
 python -m uvicorn app.main:app --reload
 ```
 
-Open Swagger UI at:
+Then open:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-## Running the Tests
-
-From the project root, run:
-
-```powershell
-python -m pytest -v
-```
-
-The current test suite contains 12 tests:
+or:
 
 ```text
-12 passed
+http://127.0.0.1:8000/redoc
 ```
-
-The test database is created separately from `students.db` and reset between tests.
 
 ## Purpose
 
-This project demonstrates how a FastAPI application can grow beyond basic CRUD functionality into a more secure and testable backend application.
-
-It provides practice with database persistence, Pydantic validation, custom errors, password hashing, JWT authentication, OAuth2, protected routes, background processing, CORS, rate limiting, pytest fixtures, isolated test databases, and automated API testing.
+This project demonstrates how a FastAPI application can evolve from a basic CRUD API into a more complete backend service with persistence, authentication, validation, security protections, background processing, automated testing, and professional API documentation.

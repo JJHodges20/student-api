@@ -24,12 +24,24 @@ limiter = Limiter(
 @router.get(
     "/me",
     response_model=UserResponse,
+    summary="View the current user profile",
+    responses={
+        401: {
+            "description": "Authentication token is missing or invalid."
+        },
+    },
 )
 @limiter.limit("60/minute")
 def get_my_profile(
     request: Request,
     current_user: User = Depends(get_current_user),
 ):
-    """Return the currently authenticated user's profile."""
+    """
+    Return the currently authenticated user's profile.
+
+    - Requires JWT authentication.
+    - Reads the user identity from the access token.
+    - Returns only the public user fields.
+    """
 
     return current_user

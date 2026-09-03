@@ -1,25 +1,20 @@
 """
-Secure Student CRUD API
+Security measures implemented in this API:
 
-Security measures:
-- JWT Bearer authentication protects modifying student endpoints.
-- Passwords are hashed with Passlib and bcrypt.
-- OAuth2 password authentication is used for login.
-- CORS restricts browser access to approved frontend origins.
-- HTTP methods exposed through CORS are restricted.
-- SlowAPI rate limiting protects endpoints from excessive requests.
-- Login requests are limited to 5 per minute.
-- Create requests are limited to 20 per minute.
-- General read requests are limited to 60 per minute.
-- Pydantic schemas enforce input length and numeric constraints.
-- Custom exceptions provide controlled API error responses.
-- Business rules prevent deletion of currently enrolled students.
+- JWT Bearer authentication for protected endpoints
+- Password hashing with Passlib and bcrypt
+- OAuth2 password authentication
+- CORS restricted to approved frontend origins
+- HTTP methods restricted through CORS configuration
+- SlowAPI rate limiting
+- Pydantic input validation and length constraints
+- Custom structured exception handling
+- Business rule preventing deletion of enrolled students
 """
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -30,31 +25,92 @@ from app.exceptions import (
     DuplicateException,
     NotFoundException,
 )
-from app.models.student import Student
-from app.models.user import User
 from app.routers import auth, students, users
 
+
+# ============================================================
+# DATABASE
+# ============================================================
 
 Base.metadata.create_all(bind=engine)
 
 
-# Rate limiter
+# ============================================================
+# API DOCUMENTATION
+# ============================================================
+
+tags_metadata = [
+    {
+        "name": "Authentication",
+        "description": (
+            "Register users and authenticate with **JWT Bearer tokens**."
+        ),
+    },
+    {
+        "name": "Students",
+        "description": (
+            "Create, view, update, and delete student records. "
+            "Write operations require authentication."
+        ),
+    },
+    {
+        "name": "Users",
+        "description": (
+            "Access information about the currently authenticated user."
+        ),
+    },
+    {
+        "name": "Root",
+        "description": "Basic API status and welcome endpoint.",
+    },
+]
+
+
+# ============================================================
+# RATE LIMITING
+# ============================================================
+
 limiter = Limiter(
     key_func=get_remote_address
 )
 
 
+# ============================================================
+# APPLICATION
+# ============================================================
+
 app = FastAPI(
     title="Secure Student CRUD API",
-    description=(
-        "A database-backed CRUD API with JWT authentication, "
-        "background tasks, CORS protection, and rate limiting."
-    ),
-    version="4.0.0",
+    description="""
+## Student Management API
+
+A secure REST API for managing student records.
+
+### Features
+
+- **Create, read, update, and delete** student records
+- Filter students by **grade level** and **enrollment status**
+- Authenticate users with **JWT Bearer tokens**
+- Validate incoming data with **Pydantic**
+- Protect endpoints with **rate limiting**
+- Restrict browser access with **CORS**
+- Run non-critical work using **background tasks**
+- Return consistent **structured error responses**
+
+### Authentication
+
+Public endpoints can be accessed without authentication.
+
+Protected endpoints require a JWT access token obtained through the
+`/auth/login` endpoint.
+
+Use the **Authorize** button in Swagger UI to authenticate.
+""",
+    version="1.0.0",
+    openapi_tags=tags_metadata,
 )
 
 
-# Make the limiter available throughout the application.
 app.state.limiter = limiter
 
 app.add_exception_handler(
@@ -63,7 +119,10 @@ app.add_exception_handler(
 )
 
 
-# CORS configuration
+# ============================================================
+# CORS
+# ============================================================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -84,6 +143,10 @@ app.add_middleware(
     ],
 )
 
+
+# ============================================================
+# CUSTOM EXCEPTION HANDLERS
+# ============================================================
 
 @app.exception_handler(NotFoundException)
 async def not_found_handler(
@@ -127,14 +190,34 @@ async def bad_request_handler(
     )
 
 
+# ============================================================
+# ROUTERS
+# ============================================================
+
 app.include_router(auth.router)
-app.include_router(users.router)
 app.include_router(students.router)
+app.include_router(users.router)
 
 
-@app.get("/", tags=["Root"])
+# ============================================================
+# ROOT
+# ============================================================
+
+@app.get(
+    "/",
+    tags=["Root"],
+    summary="View API welcome message",
+)
 @limiter.limit("60/minute")
 def root(request: Request):
+    """
+    Return basic information about the API.
+
+    - Confirms that the API is running.
+    - Provides a simple welcome message.
+    - Does not require authentication.
+    """
+
     return {
         "message": "Welcome to the Secure Student CRUD API"
     }

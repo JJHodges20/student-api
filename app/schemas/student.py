@@ -124,5 +124,16 @@ class StudentResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(
-        from_attributes=True
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 1,
+                "name": "Jordan Smith",
+                "email": "jordan@example.com",
+                "grade_level": 11,
+                "gpa": 3.7,
+                "is_enrolled": True,
+                "created_at": "2026-09-03T08:00:00",
+            }
+        },
     )
